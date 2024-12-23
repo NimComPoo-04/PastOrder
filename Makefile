@@ -15,7 +15,7 @@ RM = rm -rf
 endif
 
 define depend
-$(shell echo `$(CC) -MM $(T)`)
+$(shell $(CC) -MM $(T))
 	$(CC) $(CFLAGS) $(INC) -c -o $$@ $$<
 
 endef
@@ -25,7 +25,23 @@ all: game.exe
 game.exe: $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIB)
 
-$(foreach T,$(SRC), $(eval $(call depend $(T))))
+$(foreach T, $(SRC), $(eval $(call depend $(T))))
+
+ifeq ($(OS), Window_NT)
+getdeps:
+	mkdir libs &&\
+	cd libs &&\
+	curl -L -O https://github.com/raysan5/raylib/releases/download/5.5/raylib-5.5_win64_mingw-w64.zip &&\
+	tar xf raylib-5.5_win64_mingw-w64.zip &&\
+	del /S /Q raylib-5.5_win64_mingw-w64.zip
+else
+getdeps:
+	mkdir -p libs;\
+	cd libs;\
+	curl -L -O https://github.com/raysan5/raylib/releases/download/5.5/raylib-5.5_linux_amd64.tar.gz;\
+	tar xvf raylib-5.5_linux_amd64.tar.gz;\
+	rm -rf raylib-5.5_linux_amd64.tar.gz
+endif
 
 clean:
 	$(RM) *.o *.exe
