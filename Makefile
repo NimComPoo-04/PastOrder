@@ -1,7 +1,8 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -ggdb -std=c11 -O0
+CFLAGS = -Wall -Wextra -ggdb -std=c11 -O0 -DDEBUG
 
-SRC = main.c
+SRC = main.c map.c
+
 OBJ = $(patsubst %.c, %.o, $(SRC))
 
 ifeq ($(OS), Windows_NT)
