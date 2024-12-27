@@ -7,16 +7,27 @@ player_t player = {
 	.pos = {0, 0},
 	.angle = 0,
 	.vel = 0.5,
-	.eyelvl = 1,
+	.eyelvl = 0,
 	.fov = PI/2,
-	.size = 0.05
+	.size = 0.05,
+	.sectId = 1
 };
 
-wall_t walls[] = {
-	{0, {-0.5, -0.5}, {0.5, -0.5}},
-	{0, {-0.5, 0.5}, {0.5, 0.5}},
-	{1, {-0.5, -0.5}, {-0.5, 0.5}},
-	{0, {0.5, -0.5}, {0.5, 0.5}},
+wall_t walls[] =
+{
+	{{-0.7, 0.8}, {0.964, 0.873}, RED, RED, 0},
+	{{0.964, 0.873}, {0.45, 0.215}, RED, RED, 0},
+
+	{{-0.7, 0.8}, {0.45, 0.215}, RED, RED, 1},
+
+	{{0.45, 0.215}, {0.56, -0.467}, RED, RED, 0},
+	{{0.56, -0.467}, {0.106, -0.83}, RED, RED, 0},
+	{{0.106, -0.83}, {-0.7, 0.8}, RED, RED, 0},
+};
+
+sector_t sect[] = {
+	{-0.25, 0.25, 3, {0, 1, 2},    {[2] = 1}},
+	{-0.20, 0.20, 4, {2, 3, 4, 5}, {[0] = 0}},
 };
 
 int main(void)
@@ -27,53 +38,20 @@ int main(void)
 
 	while(!WindowShouldClose())
 	{
-		float dt = GetFrameTime();
-		float da = PI/2;
-
-		Vector2 update = {0, 0};
-
-		if(IsKeyDown(KEY_LEFT))
-		{
-			player.angle -= da * dt;
-			update = Vector2Zero();
-		}
-		if(IsKeyDown(KEY_RIGHT))
-		{
-			player.angle += da * dt;
-			update = Vector2Zero();
-		}
-		if(IsKeyDown(KEY_UP))
-		{
-			update =  (Vector2){
-				cos(player.angle - PI/2) * player.vel * dt,
-				sin(player.angle - PI/2) * player.vel * dt
-			};
-		}
-		if(IsKeyDown(KEY_DOWN))
-		{
-			update =  (Vector2){
-				-cos(player.angle - PI/2) * player.vel * dt,
-				-sin(player.angle - PI/2) * player.vel * dt
-			};
-
-		}
-
-		player.pos = Vector2Add(player.pos, update);
-		for(int i = 0; i < sizeof(walls)/sizeof(walls[0]); i++)
-		{
-			if(player_wall_collision(&player, walls+i))
-			{
-				player.pos = Vector2Subtract(player.pos, update);
-				break;
-			}
-		}
+		player_update(&player, sect, walls);
 
 		BeginDrawing();
 			ClearBackground(BLACK);
 			DrawFPS(0, 0);
 
-			walls_debug_draw(walls, sizeof(walls)/sizeof(wall_t), &player);
-			player_debug_draw(&player);
+	//		walls_debug_draw(walls, sizeof(walls)/sizeof(wall_t), &player);
+		//	sector_debug_draw(sect, sizeof(sect)/sizeof(sect[0]), &player,
+		//			walls, sizeof(walls)/sizeof(walls[0]));
+		//	player_debug_draw(&player);
+		
+			sector_draw_3d(sect, sizeof(sect)/sizeof(sect[0]), &player,
+					walls, sizeof(walls)/sizeof(walls[0]));
+
 
 		EndDrawing();
 	}
