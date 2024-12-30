@@ -1,57 +1,79 @@
 #ifndef _MAP_H_
 #define _MAP_H_
 
+#define MAX_SECTORS 100
+
 #include <raylib.h>
 #include <raymath.h>
 
+// Player
 typedef struct player_t
 {
 	Vector2 pos;
+	float   size;
 	float   angle;
 	float   vel;
-	float   eyelvl;
-	float   fov;		// horizontal fov
-	float   size;		// the circular radius the player covers
-	int     sectId;		// current sector id
+	float   fov;
+	float   eye;		// eye height
+	int     sectId;
 } player_t;
 
-typedef struct wall_t wall_t;
-typedef struct sector_t sector_t;
+typedef struct map_t map_t;
 
-void player_debug_draw(player_t *p);
-int player_wall_collision(player_t *p, wall_t *w);
+void player_update(player_t *p, map_t *m);
+void player_draw(player_t *p);
 
-void player_update(player_t *p, sector_t *s, wall_t *w);
-
-// Wall can be treated as a subwall using the interp_start and interp_end
-typedef struct wall_t
+// Vertex information
+typedef struct vertex_t
 {
-	Vector2 point_start, point_end;
-	Color   color_start, color_end;
-	int isportal;
-} wall_t;
+	Vector2 pos;
+	Color   col;
+} vertex_t;
 
-// Draw 2d Walls
-void walls_debug_draw(wall_t *walls, int count, player_t *p);
+// Lines
+typedef struct line_t
+{
+	int start;
+	int end;
+} line_t;
 
-// 3d rendering
-void wall_draw_3d(wall_t *wall, player_t *p, float elv, float heh);
-
-// Must be convex
+// sectors
 typedef struct sector_t
 {
 	float elevation;
 	float height;
 
+	line_t *walls;		// solid walls arround you
 	int walls_count;
-	int walls[10];
 
-	int neighbour_sectors[10];
+	line_t *portals;	// portals arround you
+	int portals_count;
+
+	int *neighbours;	// neighbouring sectors
 } sector_t;
 
-// Draw sectors
-void sector_debug_draw(sector_t *s, int count, player_t *p, wall_t *walls, int walls_count);
+// Map that holds all this info
+typedef struct map_t
+{
+	player_t *player;
 
-void sector_draw_3d(sector_t *s, int count, player_t *p, wall_t *walls, int walls_count);
+	vertex_t *vertices;
+	int vertex_count;
+
+	sector_t *sectors;
+	int sectors_count;
+
+	float eye_height;
+	float crouch_height;
+} map_t;
+
+void map_load_data(map_t *m, const char *file);
+
+void map_draw_vertices(map_t *m);	// render all the verteces
+void map_draw_walls(map_t *m);		// render all the sector walls
+
+void map_draw_sectors(map_t *m);	// render all the vsible sectors starting from the current sector
+
+void map_dump(map_t *m);
 
 #endif

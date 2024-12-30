@@ -1,440 +1,535 @@
-#include <memory.h>
 #include "map.h"
+#include "util.h"
+#include <stdio.h>
 
-static float intersect_wall_ray(Vector2 start, Vector2 end, float angle, Vector2 *out)
+void map_load_data(map_t *m, const char *file)
 {
-	float slope = tan(angle);
+	FILE *f = fopen(file, "rb+");
 
-	if(isinf(slope) || isnan(slope)) return -1;
+	int current_sector = -1;
 
-	float m = (end.y - start.y)/(end.x - start.x);
+	static char line[1024] = {0};
 
-	float x = ( end.y - m * end.x ) / ( slope - m );
-	float y = slope * x;
-
-	if(out)
+	while(!feof(f))
 	{
-		out->x = x;
-		out->y = y;
+		fgets(line, sizeof line, f);
+
+		switch(line[0])
+		{
+			case 'v':
+				{
+					vertex_t v = {0};
+
+					sscanf(line+1, "%f %f %hhx %hhx %hhx",
+							&v.pos.x, &v.pos.y,
+							&v.col.r, &v.col.g, &v.col.b);
+
+
+					m->vertices = array_append(m->vertices,
+							&m->vertex_count, &v, sizeof v);
+
+					break;
+				}
+
+			case 's':
+				{
+					sector_t sect = {0};
+					m->sectors = array_append(m->sectors, &m->sectors_count,
+							&sect, sizeof(sect));
+					current_sector++;
+					break;
+				}
+
+			case 'w':
+				{
+					line_t t = {0};
+					sscanf(line+1, "%i %i", &t.start, &t.end);
+
+					sector_t *s = &m->sectors[current_sector];
+					s->walls = array_append(s->walls, &s->walls_count, &t, sizeof(t));
+
+					break;
+				}
+
+			case 'p':
+				{
+					line_t t = {0};
+					int neighbour;
+					sscanf(line+1, "%i %i %i", &t.start, &t.end, &neighbour);
+
+					sector_t *s = &m->sectors[current_sector];
+
+					int botch = s->portals_count;
+					s->portals = array_append(s->portals, &s->portals_count, &t, sizeof(t));
+					s->neighbours = array_append(s->neighbours, &botch, &neighbour, sizeof(neighbour));
+
+					break;
+				}
+
+			case 'e':
+				{
+					float elevation;
+					sscanf(line+1, "%f", &elevation);
+
+					sector_t *s = &m->sectors[current_sector];
+					s->elevation= elevation;
+
+					break;
+				}
+
+			case 'h':
+				{
+					float height;
+					sscanf(line+1, "%f", &height);
+
+					sector_t *s = &m->sectors[current_sector];
+					s->height = height;
+
+					break;
+				}
+
+			case 'P':
+				{
+					Vector2 point;
+
+					sscanf(line+1, "%f %f", &point.x, &point.y);
+
+					m->player->sectId = current_sector;
+					m->player->pos = point;
+				}
+		}
 	}
 
-	if(y > 0)
-		return -1;
-
-	return (x - start.x) / (end.x - start.x);
+	fclose(f);
 }
 
-void walls_debug_draw(wall_t *walls, int count, player_t *p)
+void map_dump(map_t *m)
 {
-	Vector2 start = {0, 0}, end = {0, 0};
+	printf("p\t%f %f\t%i\n", m->player->pos.x, m->player->pos.y, m->player->sectId);
+	puts("");
 
-	int width = GetScreenWidth();
-	int height = GetScreenHeight();
+	for(int i = 0; i < m->vertex_count; i++)
+		printf("v\t%f %f\t%2x %2x %2x\n",
+				m->vertices[i].pos.x, m->vertices[i].pos.y,
+				m->vertices[i].col.r, m->vertices[i].col.g, m->vertices[i].col.b);
+	puts("");
 
-	Vector2 world_scale = { width / (2.f * width/height), height / 2.f };
-	Vector2 world_offset = { width / 2.f, height / 2.f };
-
-	Vector2 fovvec1 = {cos(-p->fov/2 + p->angle), sin(-p->fov/2 + p->angle)};
-	Vector2 fovvec2 = {cos(p->fov/2 + p->angle), sin(p->fov/2 + p->angle)};
-
-	for(int i = 0; i < count; i++)
+	for(int i = 0; i < m->sectors_count; i++)
 	{
-		Vector2 drawpoints[2] = {0};
-		int drawpoints_len = 0;
+		printf("s\n");
 
-		start = walls[i].point_start;
-		start = Vector2Subtract(start, p->pos);
-		start = Vector2Rotate(start, -p->angle);
+		printf("e\t%f\n", m->sectors[i].elevation);
+		printf("h\t%f\n", m->sectors[i].height);
 
-		end = walls[i].point_end;
-		end = Vector2Subtract(end, p->pos);
-		end = Vector2Rotate(end, -p->angle);
+		for(int j = 0; j < m->sectors[i].walls_count; j++)
+			printf("w\t%i %i\n", m->sectors[i].walls[j].start, m->sectors[i].walls[j].end);
 
-		for(int i = -1; i <= 1; i += 2)
+		for(int j = 0; j < m->sectors[i].portals_count; j++)
+			printf("p\t%i %i\t%i\n",
+					m->sectors[i].portals[j].start, m->sectors[i].portals[j].end,
+					m->sectors[i].neighbours[j]);
+		puts("");
+	}
+}
+
+void player_draw(player_t *p)
+{
+	int wid = GetScreenWidth();
+	int hei = GetScreenHeight();
+
+	DrawLine(wid/2, hei/2,
+		 wid/2 + 10 * p->size * hei * cos(p->fov/2),
+		 hei/2 + 10 * p->size * hei * sin(p->fov/2), SKYBLUE);
+
+	DrawLine(wid/2, hei/2,
+		 wid/2 + 10 * p->size * hei * cos(-p->fov/2),
+		 hei/2 + 10 * p->size * hei * sin(-p->fov/2), SKYBLUE);
+
+	DrawLine(wid/2, hei/2, wid/2 + p->size * hei + 5, hei/2, SKYBLUE);
+
+	DrawCircle(wid/2, hei/2, 3, MAROON);
+	DrawCircleLines(wid/2, hei/2, p->size * hei, YELLOW);
+}
+
+static inline Vector2 map_to_screen(map_t *m, vertex_t v)
+{
+	int wid = GetScreenWidth();
+	int hei = GetScreenHeight();
+
+	Vector2 world_screen = {wid/(2. * wid/hei), hei/2.};
+	Vector2 world_offset = {wid/2., hei/2.};
+
+	Vector2 view_v = Vector2Rotate(Vector2Subtract(v.pos, m->player->pos), -m->player->angle);
+	Vector2 wrld_v = Vector2Add(world_offset, Vector2Multiply(world_screen, view_v));
+
+	return wrld_v;
+}
+
+static inline Vector2 map_to_world(map_t *m, Vector2 v)
+{
+	int wid = GetScreenWidth();
+	int hei = GetScreenHeight();
+
+	Vector2 world_screen = {wid/(2. * wid/hei), hei/2.};
+	Vector2 world_offset = {wid/2., hei/2.};
+
+	return Vector2Add(world_offset, Vector2Multiply(world_screen, v));
+}
+
+static inline Vector2 map_to_relpalyer(map_t *m, vertex_t v)
+{
+	return Vector2Rotate(Vector2Subtract(v.pos, m->player->pos), -m->player->angle);
+}
+
+void map_draw_vertices(map_t *m)
+{
+	for(int i = 0; i < m->vertex_count; i++)
+	{
+		Vector2 v = map_to_screen(m, m->vertices[i]);
+
+		DrawRectangleLines(v.x - 3, v.y - 3, 6, 6, GREEN);
+		DrawCircle(v.x, v.y, 4, m->vertices[i].col);
+	}
+}
+
+void map_draw_walls(map_t *m)
+{
+	for(int j = 0; j < m->sectors_count; j++)
+	{
+		sector_t s = m->sectors[j];
+		for(int i = 0; i < s.walls_count; i++)
 		{
-			float t = intersect_wall_ray(start, end, i * p->fov/2, NULL);
+			line_t l = s.walls[i];
 
-			if(t > 0 && t < 1)
-			{
-				Vector2 point = Vector2Lerp(start, end, t);
+			Vector2 a = map_to_screen(m, m->vertices[l.start]);
+			Vector2 b = map_to_screen(m, m->vertices[l.end]);
 
-				int flag = 1;
-				if(Vector2LengthSqr(point) < p->size * p->size)
-					flag = 0;
-
-				point = Vector2Multiply(point, world_scale);
-				point = Vector2Add(point, world_offset);
-
-				if(flag)
-					drawpoints[drawpoints_len++] = point;
-
-				DrawCircleV(point, 3, ORANGE);
-			}
-		}
-
-		// Drawing shit
-		start = Vector2Multiply(start, world_scale);
-		start = Vector2Add(start, world_offset);
-
-		end = Vector2Multiply(end, world_scale);
-		end = Vector2Add(end, world_offset);
-
-		DrawLineEx(start, end, 3, walls[i].isportal ? GRAY : MAROON);
-
-		Vector2 sub = Vector2Subtract(walls[i].point_start, p->pos);
-		if(Vector2DotProduct(sub, fovvec1) >= 0 && Vector2DotProduct(sub, fovvec2) <= 0)
-		{
-			drawpoints[drawpoints_len++] = start;
-			DrawCircleV(start, 3, ORANGE);
-		}
-
-		sub = Vector2Subtract(walls[i].point_end, p->pos);
-		if(Vector2DotProduct(sub, fovvec1) >= 0 && Vector2DotProduct(sub, fovvec2) <= 0)
-		{
-			drawpoints[drawpoints_len++] = end;
-			DrawCircleV(end, 3, ORANGE);
-		}
-
-		if(drawpoints_len == 2)
-		{
-			DrawLineV(drawpoints[0], drawpoints[1], SKYBLUE);
+			DrawLineV(a, b, MAROON);
 		}
 	}
 }
 
-void player_debug_draw(player_t *player)
+static inline float ray_line_intersection(Vector2 o, Vector2 n, Vector2 a, Vector2 b)
 {
-	int width = GetScreenWidth();
-	int height = GetScreenHeight();
+	Vector2 ab = Vector2Subtract(b, a);
+	Vector2 oa = Vector2Subtract(a, o);
 
-//	Vector2 window_scale = { width/(2.f * width / height), height/2.f };
-	Vector2 window_offset = { width/2.f, height/2.f };
+	float C = oa.y/n.y - oa.x/n.x;
+	float M = ab.y/n.y - ab.x/n.x;
 
-	Vector2 dirvec = {0, -40};
+	float t = -C/M;
 
-	DrawLineEx(window_offset, Vector2Add(window_offset, dirvec), 3, BLUE);
-	DrawCircleV(window_offset, 5, RED);
-	DrawCircleLinesV(window_offset, player->size * height/2, MAROON);
-
-	DrawLineEx(window_offset,
-			Vector2Add(window_offset, Vector2Rotate(dirvec, -player->fov/2)),
-			3, YELLOW);
-
-	DrawLineEx(window_offset,
-			Vector2Add(window_offset, Vector2Rotate(dirvec, player->fov/2)),
-			3, YELLOW);
+	return t;
 }
 
-int player_wall_collision(player_t *p, wall_t *w)
+static inline int clip_points(map_t *m, line_t l, Vector2 fov1, Vector2 fov2, Vector2 pts[2])
 {
-	// Equation of circle (x - x0)^2 + (y - y0)^2 = r^2
-	// Equation of Ray    startx + m * t	
+	int pts_len = 0;
 
-	Vector2 a = w->point_start;
-	a = Vector2Subtract(a, p->pos);
-	a = Vector2Rotate(a, -p->angle);
+	Vector2 a = map_to_relpalyer(m, m->vertices[l.start]);
+	Vector2 b = map_to_relpalyer(m, m->vertices[l.end]);
 
-	Vector2 q = w->point_end;	
-	q = Vector2Subtract(q, p->pos);
-	q = Vector2Rotate(q, -p->angle);
+	// Clipping code
 
-	float r = p->size;
-	Vector2 d = Vector2Subtract(q, a);
+	float ang_a = atan2(a.y, a.x);
+	float ang_b = atan2(b.y, b.x);
 
-	float c_ = Vector2LengthSqr(a) - r * r;
-	float b_ = 2 * Vector2DotProduct(a, d);
-	float a_ = Vector2LengthSqr(d);
+	float ang_fov1 = atan2(fov1.y, fov1.x);
+	float ang_fov2 = atan2(fov2.y, fov2.x);
 
-	float disc = b_ * b_ - 4 * a_ * c_;
+	if(IsKeyPressed(KEY_U))
+	TraceLog(LOG_INFO, "%f %f %f %f", ang_a, ang_b, ang_fov1, ang_fov2);
 
-	if(disc < 0)
-		return 0;
+	if(ang_fov1 > ang_fov2)
+	{
+		swap(ang_fov1, ang_fov2, float);
+		swap(fov1, fov2, Vector2);
+	}
 
-	float t0 = (-b_ + sqrt(disc)) / (2 * a_);
-	float t1 = (-b_ - sqrt(disc)) / (2 * a_);
+	if(ang_a >= ang_fov1 && ang_a <= ang_fov2)
+		pts[pts_len++] = a;
 
-	if(0 <= t0 && t0 <= 1)
-		return 1;
+	if(ang_b >= ang_fov1 && ang_b <= ang_fov2)
+		pts[pts_len++] = b;
 
-	if(0 <= t1 && t1 <= 1)
-		return 1;
+	if(pts_len < 2)
+	{
+		float t1 = ray_line_intersection(Vector2Zero(), fov1, a, b);
+		float t2 = ray_line_intersection(Vector2Zero(), fov2, a, b);
 
-	return 0;
+		if(t1 >= 0 && t1 <= 1)
+		{
+			Vector2 v = Vector2Lerp(a, b, t1);
+			if(v.x > 0) pts[pts_len++] = v;
+		}
+
+		if(t2 >= 0 && t2 <= 1)
+		{
+			Vector2 v = Vector2Lerp(a, b, t2);
+			if(v.x > 0) pts[pts_len++] = v;
+		}
+	}
+
+	return pts_len;
 }
 
-// Draw only the sectors which are visible
-void sector_debug_draw(sector_t *s, int count, player_t *p, wall_t *walls, int walls_count)
+void map_draw_sectors(map_t *m)
 {
-	(void)count;
+	int wid = GetScreenWidth();
+	int hei = GetScreenHeight();
 
-	Vector2 fovvec1 = {cos(-p->fov/2 + p->angle), sin(-p->fov/2 + p->angle)};
-	Vector2 fovvec2 = {cos(p->fov/2 + p->angle), sin(p->fov/2 + p->angle)};
+	static char visited_sectors[MAX_SECTORS] = {0};
+	memset(visited_sectors, 0, sizeof visited_sectors);
 
-	int visited[walls_count];
-	memset(visited, 0, sizeof(visited));
+	// Setting up the y thing
+	float *y_top = malloc(sizeof(float) * GetScreenWidth());
+	float *y_bottom = malloc(sizeof(float) * GetScreenWidth());
 
-	int queue[32] = {0};
+	for(int i = 0; i < GetScreenWidth(); i++)
+	{
+		y_top[i] = 0;
+		y_bottom[i] = hei;
+	}
+
+	float arc = tan(m->player->fov/2);
+	float znear = 1/arc; 
+
+	enum { MaxQueue = 32 };
+
+	struct
+	{
+		int sectId;
+		Vector2 fov1;
+		Vector2 fov2;
+	} queue[MaxQueue] = {0};
 	int head = 0;
 	int tail = 0;
 
-	queue[tail] = p->sectId;
-	tail = (tail + 1) % 32;
+	queue[tail].sectId = m->player->sectId;
+	queue[tail].fov1 = (Vector2){cos(m->player->fov/2), sin(m->player->fov/2)};
+	queue[tail].fov2 = (Vector2){queue[tail].fov1.x, -queue[tail].fov1.y};
 
-	while(head != tail)
+	tail++;
+
+	int depth = 0;
+
+	while(head != tail && depth < 5)
 	{
-		int i = queue[head];
-		head = (head + 1) % 32;
+		depth++;
 
-		for(int j = 0; j < s[i].walls_count; j++)
+		int sectId = queue[head].sectId;
+		sector_t s = m->sectors[sectId];
+		Vector2 fov1 = queue[head].fov1;
+		Vector2 fov2 = queue[head].fov2;
+
+		head = (head + 1) % MaxQueue;
+
+		for(int i = 0; i < s.walls_count; i++)
 		{
-			walls_debug_draw(&walls[s[i].walls[j]], 1, p);
+			line_t l = s.walls[i];
 
-			if(walls[s[i].walls[j]].isportal)
+			Vector2 pts[4];
+			int pts_len = clip_points(m, l, fov1, fov2, pts);
+
+			if(pts_len != 2)
+				continue;
+
+			/*
+			   Vector2 ka = map_to_world(m, pts[0]);
+			   Vector2 kb = map_to_world(m, pts[1]);
+
+			   DrawLineV(ka, kb, SKYBLUE);
+
+			   Vector2 v = {GetScreenWidth()/2, GetScreenHeight()/2};
+
+			   DrawLineV(v, ka, GREEN);
+			   DrawLineV(v, kb, GREEN);
+			   */
+
+#if 1
+			float z1 = pts[0].x;
+			float z2 = pts[1].x;
+
+			float x1 = clamp((pts[0].y * znear / z1 + 1)/2, 0, 1) * wid;
+			float x2 = clamp((pts[1].y * znear / z2 + 1)/2, 0, 1) * wid;
+
+			if(x1 > x2)
 			{
-				int isinrange = 0;
-
-				Vector2 start = walls[s[i].walls[j]].point_start;
-				start = Vector2Subtract(start, p->pos);
-				start = Vector2Rotate(start, -p->angle);
-
-				Vector2 end = walls[s[i].walls[j]].point_end;
-				end = Vector2Subtract(end, p->pos);
-				end = Vector2Rotate(end, -p->angle);
-
-				float t = intersect_wall_ray(start, end, p->fov/2, NULL);
-				isinrange = isinrange || (t >= 0 && t <= 1);
-
-				t = intersect_wall_ray(start, end, -p->fov/2, NULL);
-				isinrange = isinrange || (t >= 0 && t <= 1);
-
-				Vector2 sub = Vector2Subtract(walls[s[i].walls[j]].point_start, p->pos);
-				isinrange = isinrange || (Vector2DotProduct(sub, fovvec1) >= 0 && Vector2DotProduct(sub, fovvec2) <= 0);
-
-				sub = Vector2Subtract(walls[s[i].walls[j]].point_end, p->pos);
-				isinrange = isinrange || (Vector2DotProduct(sub, fovvec1) >= 0 && Vector2DotProduct(sub, fovvec2) <= 0);
-
-				if(isinrange && !visited[j])
-				{
-					queue[tail] = s[i].neighbour_sectors[j];
-					tail = (tail + 1) % 32;
-					visited[j] = 1;
-				}
+				swap(x1, x2, float);
+				swap(z1, z2, float);
 			}
+
+			float ty1 = hei - ((s.height - s.elevation - m->player->eye) * znear / z1 + 1)/2 * hei;
+			float ty2 = hei - ((s.height - s.elevation - m->player->eye) * znear / z2 + 1)/2 * hei;
+			float by1 = hei - ((s.elevation - m->player->eye) * znear / z1 + 1)/2 * hei;
+			float by2 = hei - ((s.elevation - m->player->eye) * znear / z2 + 1)/2 * hei;
+
+			if((int)x1 == (int)x2) continue;
+
+			float dty = (ty2 - ty1)/(x2 - x1);
+			float dby = (by2 - by1)/(x2 - x1);
+
+			for(float x = x1, ty = ty1, by = by1; x <= x2; x++, ty += dty, by += dby)
+			{
+				float tmp_ty = clamp(ty, y_top[(int)x], y_bottom[(int)x]);
+				float tmp_by = clamp(by, y_top[(int)x], y_bottom[(int)x]);
+
+				DrawLine(x, tmp_ty, x, y_top[(int)x], LIGHTGRAY);
+				DrawPixel(x, y_top[(int)x], BLACK);
+
+				if((int)x == (int)x1 || (int)x == (int)x2)
+					DrawLine(x, tmp_ty, x, tmp_by, BLACK);
+				else
+					DrawLine(x, tmp_ty, x, tmp_by, DARKGREEN);
+
+				DrawLine(x, tmp_by, x, y_bottom[(int)x], DARKPURPLE);
+				DrawPixel(x, y_bottom[(int)x], BLACK);
+
+				y_top[(int)x] = ty < y_top[(int)x] ? y_top[(int)x] : ty;
+				y_bottom[(int)x] = by > y_bottom[(int)x] ? y_bottom[(int)x] : by;
+			}
+#endif
+		}
+
+		visited_sectors[sectId] = 1;
+
+		for(int i = 0; i < s.portals_count; i++)
+		{
+			line_t l = s.portals[i];
+
+			Vector2 pts[4];
+			int pts_len = clip_points(m, l, fov1, fov2, pts);
+
+			if(pts_len != 2) continue;
+			if(visited_sectors[s.neighbours[i]] != 0) continue;
+
+			float z1 = pts[0].x;
+			float z2 = pts[1].x;
+
+			float x1 = clamp((pts[0].y * znear / z1 + 1)/2, 0.0015, 1) * wid;
+			float x2 = clamp((pts[1].y * znear / z2 + 1)/2, 0.0015, 1) * wid;
+
+			if(x1 > x2)
+			{
+				swap(x1, x2, float);
+				swap(z1, z2, float);
+			}
+
+			float ty1 = hei - ((s.height - s.elevation - m->player->eye) * znear / z1 + 1)/2 * hei;
+			float ty2 = hei - ((s.height - s.elevation - m->player->eye) * znear / z2 + 1)/2 * hei;
+			float by1 = hei - ((s.elevation - m->player->eye) * znear / z1 + 1)/2 * hei;
+			float by2 = hei - ((s.elevation - m->player->eye) * znear / z2 + 1)/2 * hei;
+
+			sector_t ns = m->sectors[s.neighbours[i]];
+
+			float nty1 = hei - ((ns.height - ns.elevation - m->player->eye) * znear / z1 + 1)/2 * hei;
+			float nty2 = hei - ((ns.height - ns.elevation - m->player->eye) * znear / z2 + 1)/2 * hei;
+			float nby1 = hei - ((ns.elevation - m->player->eye) * znear / z1 + 1)/2 * hei;
+			float nby2 = hei - ((ns.elevation - m->player->eye) * znear / z2 + 1)/2 * hei;
+
+			if((int)x1 == (int)x2) continue;
+
+			float dty = (ty2 - ty1)/(x2 - x1);
+			float dby = (by2 - by1)/(x2 - x1);
+
+			float ndty = (nty2 - nty1)/(x2 - x1);
+			float ndby = (nby2 - nby1)/(x2 - x1);
+
+			for(float x = x1, ty = ty1, by = by1, nty = nty1, nby = nby1;
+					x <= x2; x++, ty += dty, by += dby, nty += ndty, nby += ndby)
+			{
+				float tmp_ty = clamp(ty, y_top[(int)x], y_bottom[(int)x]);
+				float tmp_by = clamp(by, y_top[(int)x], y_bottom[(int)x]);
+
+				float tmp_nty = clamp(nty, y_top[(int)x], y_bottom[(int)x]);
+				float tmp_nby = clamp(nby, y_top[(int)x], y_bottom[(int)x]);
+
+				tmp_nty = nty > ty ? nty : ty;
+				tmp_nby = nby < by ? nby : by;
+
+				DrawLine(x, tmp_ty, x, y_top[(int)x], LIGHTGRAY);
+				DrawLine(x, tmp_ty, x, tmp_nty , PINK);
+				DrawLine(x, tmp_by, x, tmp_nby , PURPLE);
+				DrawLine(x, tmp_by, x, y_bottom[(int)x], DARKPURPLE);
+
+				y_top[(int)x] = tmp_nty < y_top[(int)x] ? y_top[(int)x] : tmp_nty;
+				y_bottom[(int)x] = tmp_nby  > y_bottom[(int)x] ? y_bottom[(int)x] : tmp_nby ;
+			}
+
+			queue[tail].sectId = s.neighbours[i];
+			queue[tail].fov1 = pts[0];
+			queue[tail].fov2 = pts[1];
+
+			queue[tail].fov1.y -= 0.00001 * sign(queue[tail].fov1.y);
+			queue[tail].fov2.y -= 0.00001 * sign(queue[tail].fov2.y);
+
+			tail = (tail + 1) % MaxQueue;
+
+			visited_sectors[s.neighbours[i]] = 1;
 		}
 	}
+
+	free(y_top);
+	free(y_bottom);
 }
 
-void player_update(player_t *player, sector_t *sect, wall_t *walls)
+void player_update(player_t *p, map_t *m)
 {
 	float dt = GetFrameTime();
-	float da = -PI/2;
-
-	Vector2 update = {0, 0};
 
 	if(IsKeyDown(KEY_LEFT))
-	{
-		player->angle -= da * dt;
-		update = Vector2Zero();
-	}
+		p->angle -= PI/2 * dt;
+
 	if(IsKeyDown(KEY_RIGHT))
-	{
-		player->angle += da * dt;
-		update = Vector2Zero();
-	}
+		p->angle += PI/2 * dt;
+
+	Vector2 update = {0};
+
 	if(IsKeyDown(KEY_UP))
-	{
-		update =  (Vector2){
-			cos(player->angle - PI/2) * player->vel * dt,
-				sin(player->angle - PI/2) * player->vel * dt
-		};
-	}
+		update = (Vector2){cos(p->angle) * p->vel * dt,
+			sin(p->angle) * p->vel * dt};
+
 	if(IsKeyDown(KEY_DOWN))
+		update = (Vector2){-cos(p->angle) * p->vel * dt,
+			-sin(p->angle) * p->vel * dt};
+
+	if(IsKeyPressed(KEY_Q))
+		p->eye += 0.01;
+
+	if(IsKeyPressed(KEY_W))
+		p->eye -= 0.01;
+
+	Vector2 newpos = Vector2Add(p->pos, update);
+
+	// TODO: test this extensively so that there are no cases where this fails man
+	// idk if this is particularly good way to test things.
+
+	for(int i = 0; i < m->sectors[p->sectId].portals_count; i++)
 	{
-		update =  (Vector2){
-			-cos(player->angle - PI/2) * player->vel * dt,
-				-sin(player->angle - PI/2) * player->vel * dt
-		};
+		line_t l = m->sectors[p->sectId].portals[i];
+		int neighbour = m->sectors[p->sectId].neighbours[i];
 
-	}
+		Vector2 a = m->vertices[l.start].pos;
+		Vector2 b = m->vertices[l.end].pos;
 
-	player->pos = Vector2Add(player->pos, update);
-	for(int j = 0; j < sect[player->sectId].walls_count; j++)
-	{
-		int i = sect[player->sectId].walls[j];
+		Vector2 ap = Vector2Subtract(p->pos, a);
+		Vector2 an = Vector2Subtract(newpos, a);
+		Vector2 ab = Vector2Subtract(b, a);
 
-		if(walls[i].isportal)
+		float k1 = ap.x * ab.y - ap.y * ab.x;
+		float k2 = an.x * ab.y - an.y * ab.x;
+
+		if(k1 * k2 <= 0)
 		{
-			Vector2 dir = Vector2Subtract(walls[i].point_end, walls[i].point_start);
-			Vector2 plr = Vector2Subtract(player->pos, walls[i].point_start);
-
-			float k1 = dir.x * plr.y - dir.y * plr.x;
-
-			player->pos = Vector2Subtract(player->pos, update);
-			plr = Vector2Subtract(player->pos, walls[i].point_start);
-
-			float k2 = dir.x * plr.y - dir.y * plr.x;
-
-			player->pos = Vector2Add(player->pos, update);
-
-			if(k1 * k2 < 0)
-			{
-				player->sectId = sect[player->sectId].neighbour_sectors[j];
-				break;
-			}
-		}
-		else if(player_wall_collision(player, walls+i))
-		{
-			player->pos = Vector2Subtract(player->pos, update);
-
-			// FIXME: Buggy wall slide code
-			/*
-			Vector2 wallvec = Vector2Subtract(walls[i].point_end, walls[i].point_start);
-			Vector2 nwallvc = Vector2Normalize(wallvec);
-
-			float t = nwallvc.x * update.y - nwallvc.y * update.x;
-			t = (t == 0 ? 0 : (t < 0 ? -1 : 1));
-
-			Vector2 movevec = Vector2Scale(nwallvc, t * Vector2DotProduct(wallvec, update));
-
-			player->pos = Vector2Add(player->pos, movevec);
-			update = movevec; j = 0;
-			*/
-		}
-	}
-}
-
-// FIXME: pull a full 3d here man 
-void wall_draw_3d(wall_t *wall, player_t *p, float elv, float heh)
-{
-	Vector2 start = {0, 0}, end = {0, 0};
-
-	int width = GetScreenWidth();
-	int height = GetScreenHeight();
-
-	Vector2 world_scale = { width / (2.f * (width / height)), height / 2.f };
-	Vector2 world_offset = { width / 2.f, height / 2.f };
-
-	Vector2 fovvec1 = {cos(-p->fov/2 + p->angle), sin(-p->fov/2 + p->angle)};
-	Vector2 fovvec2 = {cos(p->fov/2 + p->angle), sin(p->fov/2 + p->angle)};
-
-	Vector2 drawpoints[4] = {0};
-	int drawpoints_len = 0;
-
-	start = wall->point_start;
-	start = Vector2Subtract(start, p->pos);
-	start = Vector2Rotate(start, -p->angle);
-
-	end = wall->point_end;
-	end = Vector2Subtract(end, p->pos);
-	end = Vector2Rotate(end, -p->angle);
-
-	for(int i = -1; i <= 1; i += 2)
-	{
-		Vector2 point;
-		float t = intersect_wall_ray(start, end, i * p->fov/2, &point);
-
-		if(t > 0 && t < 1)
-		{
-			drawpoints[drawpoints_len++] = point;
+			p->sectId = neighbour;
+			break;
 		}
 	}
 
-	Vector2 sub = Vector2Subtract(wall->point_start, p->pos);
-	if(Vector2DotProduct(sub, fovvec1) >= 0 && Vector2DotProduct(sub, fovvec2) <= 0)
-	{
-		drawpoints[drawpoints_len++] = start;
-	}
+	p->pos = newpos;
 
-	sub = Vector2Subtract(wall->point_end, p->pos);
-	if(Vector2DotProduct(sub, fovvec1) >= 0 && Vector2DotProduct(sub, fovvec2) <= 0)
-	{
-		drawpoints[drawpoints_len++] = end;
-	}
-
-	if(drawpoints_len != 2) return;
-
-	// Constants
-
-	float z1 = drawpoints[0].y;
-	float z2 = drawpoints[1].y;
-
-	float as = tanf(p->fov/2);
-
-	float t1 = (heh - elv - p->eyelvl) / z1 * world_scale.y + world_offset.y;
-	float b1 = (elv - p->eyelvl) / z1 * world_scale.y + world_offset.y;
-
-	float t2 = (heh - elv - p->eyelvl) / z2 * world_scale.y + world_offset.y;
-	float b2 = (elv - p->eyelvl) / z2 * world_scale.y + world_offset.y;
-
-	float x1 = drawpoints[0].x / z1 * world_scale.x + world_offset.x;
-	float x2 = drawpoints[1].x / z2 * world_scale.x + world_offset.x;
-
-	DrawLine(x1, t1, x1, b1, RED);
-	DrawLine(x2, t2, x2, b2, RED);
-
-	DrawLine(x1, t1, x2, t2, RED);
-	DrawLine(x1, b1, x2, b2, RED);
-}
-
-void sector_draw_3d(sector_t *s, int count, player_t *p, wall_t *walls, int walls_count)
-{
-	(void)count;
-
-	Vector2 fovvec1 = {cos(-p->fov/2 + p->angle), sin(-p->fov/2 + p->angle)};
-	Vector2 fovvec2 = {cos(p->fov/2 + p->angle), sin(p->fov/2 + p->angle)};
-
-	int visited[walls_count];
-	memset(visited, 0, sizeof(visited));
-
-	int queue[32] = {0};
-	int head = 0;
-	int tail = 0;
-
-	queue[tail] = p->sectId;
-	tail = (tail + 1) % 32;
-
-	while(head != tail)
-	{
-		int i = queue[head];
-		head = (head + 1) % 32;
-
-		for(int j = 0; j < s[i].walls_count; j++)
-		{
-			wall_draw_3d(&walls[s[i].walls[j]], p, s[i].elevation, s[i].height);
-
-			if(walls[s[i].walls[j]].isportal)
-			{
-				int isinrange = 0;
-
-				Vector2 start = walls[s[i].walls[j]].point_start;
-				start = Vector2Subtract(start, p->pos);
-				start = Vector2Rotate(start, -p->angle);
-
-				Vector2 end = walls[s[i].walls[j]].point_end;
-				end = Vector2Subtract(end, p->pos);
-				end = Vector2Rotate(end, -p->angle);
-
-				float t = intersect_wall_ray(start, end, p->fov/2, NULL);
-				isinrange = isinrange || (t >= 0 && t <= 1);
-
-				t = intersect_wall_ray(start, end, -p->fov/2, NULL);
-				isinrange = isinrange || (t >= 0 && t <= 1);
-
-				Vector2 sub = Vector2Subtract(walls[s[i].walls[j]].point_start, p->pos);
-				isinrange = isinrange || (Vector2DotProduct(sub, fovvec1) >= 0 && Vector2DotProduct(sub, fovvec2) <= 0);
-
-				sub = Vector2Subtract(walls[s[i].walls[j]].point_end, p->pos);
-				isinrange = isinrange || (Vector2DotProduct(sub, fovvec1) >= 0 && Vector2DotProduct(sub, fovvec2) <= 0);
-
-				/*
-				if(isinrange && !visited[j])
-				{
-					queue[tail] = s[i].neighbour_sectors[j];
-					tail = (tail + 1) % 32;
-					visited[j] = 1;
-				}
-				*/
-			}
-		}
-	}
+	if(IsKeyDown(KEY_K))
+		p->eye = m->sectors[p->sectId].elevation + m->crouch_height;
+	else
+		p->eye = m->sectors[p->sectId].elevation + m->eye_height;
 }
