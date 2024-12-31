@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -ggdb -std=c11 -O0 -DDEBUG
 
-SRC = main.c map.c
+SRC = main.c map.c draw_ext.c entity.c
 
 OBJ = $(patsubst %.c, %.o, $(SRC))
 
@@ -43,6 +43,9 @@ getdeps:
 	tar xvf raylib-5.5_linux_amd64.tar.gz;\
 	rm -rf raylib-5.5_linux_amd64.tar.gz
 endif
+
+map-builder:
+	make -C map_builder
 
 clean:
 	$(RM) *.o *.exe

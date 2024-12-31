@@ -6,28 +6,12 @@
 #include <raylib.h>
 #include <raymath.h>
 
-// Player
-typedef struct player_t
-{
-	Vector2 pos;
-	float   size;
-	float   angle;
-	float   vel;
-	float   fov;
-	float   eye;		// eye height
-	int     sectId;
-} player_t;
-
-typedef struct map_t map_t;
-
-void player_update(player_t *p, map_t *m);
-void player_draw(player_t *p);
+#include "entity.h"
 
 // Vertex information
 typedef struct vertex_t
 {
 	Vector2 pos;
-	Color   col;
 } vertex_t;
 
 // Lines
@@ -35,6 +19,9 @@ typedef struct line_t
 {
 	int start;
 	int end;
+
+	Color   col_start;
+	Color   col_end;
 } line_t;
 
 // sectors
@@ -57,6 +44,9 @@ typedef struct map_t
 {
 	player_t *player;
 
+	entity_t *entities;
+	int entities_count;
+
 	vertex_t *vertices;
 	int vertex_count;
 
@@ -65,15 +55,14 @@ typedef struct map_t
 
 	float eye_height;
 	float crouch_height;
+
+	int debug_view;
 } map_t;
 
 void map_load_data(map_t *m, const char *file);
-
 void map_draw_vertices(map_t *m);	// render all the verteces
 void map_draw_walls(map_t *m);		// render all the sector walls
-
 void map_draw_sectors(map_t *m);	// render all the vsible sectors starting from the current sector
-
 void map_dump(map_t *m);
 
 #endif

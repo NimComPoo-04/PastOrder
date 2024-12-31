@@ -3,11 +3,16 @@
 
 #include "map.h"
 
-int main(void)
+const char *name = "demo.map";
+
+int main(int argc, char **argv)
 {
+	if(argc == 2)
+		name = argv[1];
+
 	player_t p = {
 		.pos = {0, 0},
-		.size = 0.015,
+		.size = 0.02,
 		.angle = 0,
 		.vel = 1,
 		.fov = PI/2,
@@ -20,7 +25,7 @@ int main(void)
 	m.eye_height = 0.5;
 	m.crouch_height = 0.25;
 
-	map_load_data(&m, "demo.map");
+	map_load_data(&m, name);
 	map_dump(&m);	
 
 	InitWindow(800, 800, "...");
@@ -31,10 +36,6 @@ int main(void)
 		BeginDrawing();
 		ClearBackground(DARKBROWN);
 
-		//player_draw(&p);
-
-		//map_draw_walls(&m);
-		//map_draw_vertices(&m);
 		map_draw_sectors(&m);
 
 		DrawFPS(0, 0);
@@ -42,6 +43,7 @@ int main(void)
 		EndDrawing();
 
 		player_update(&p, &m);
+		map_update(&m);
 	}
 
 	CloseWindow();
