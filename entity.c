@@ -116,10 +116,58 @@ void player_update(player_t *p, map_t *m)
 		p->eye = m->sectors[p->sectId].elevation + m->eye_height;
 }
 
-void entity_update(entity_t *e, map_t *m)
+void entity_update(entity_t *p, map_t *m)
 {
+	float dt = GetFrameTime();
+	Vector2 update = (Vector2){cos(p->angle) * p->vel * dt, sin(p->angle) * p->vel * dt};
+
+	Vector2 newpos = Vector2Add(p->pos, update);
+	Vector2 newupd = {0};
+
+	// TODO: test this extensively so that there are no cases where this fails man
+	// idk if this is particularly good way to test things.
+
+	if(entity_wall_collision(p, newpos, m, &newupd))
+	{
+		newpos = Vector2Add(p->pos, newupd);
+		p->angle = GetRandomValue(0, 360) * PI/180;
+	}
+
+	for(int i = 0; i < m->sectors[p->sectId].portals_count; i++)
+	{
+		line_t l = m->sectors[p->sectId].portals[i];
+		int neighbour = m->sectors[p->sectId].neighbours[i];
+
+		Vector2 a = m->vertices[l.start].pos;
+		Vector2 b = m->vertices[l.end].pos;
+
+		Vector2 ap = Vector2Subtract(p->pos, a);
+		Vector2 an = Vector2Subtract(newpos, a);
+		Vector2 ab = Vector2Subtract(b, a);
+
+		float k1 = ap.x * ab.y - ap.y * ab.x;
+		float k2 = an.x * ab.y - an.y * ab.x;
+
+		if(k1 * k2 <= 0)
+		{
+			p->sectId = neighbour;
+			break;
+		}
+	}
+
+	newupd.x = 0;
+	newupd.y = 0;
+
+	p->pos = newpos;
+
 }
 
+Vector2 map_to_screen(map_t *m, vertex_t v);
 void entity_draw(entity_t *e, map_t *m)
 {
+//	entity_update(e, m);
+	Vector2 v = map_to_screen(m, (vertex_t){e->pos});
+
+	DrawCircle(v.x, v.y, 3, LIME);
+	DrawCircleLines(v.x, v.y, e->size * GetScreenHeight()/2, YELLOW);
 }

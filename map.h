@@ -60,9 +60,12 @@ typedef struct map_t
 } map_t;
 
 void map_load_data(map_t *m, const char *file);
+
 void map_draw_vertices(map_t *m);	// render all the verteces
 void map_draw_walls(map_t *m);		// render all the sector walls
 void map_draw_sectors(map_t *m);	// render all the vsible sectors starting from the current sector
+
 void map_dump(map_t *m);
+void map_update(map_t *m);
 
 #endif

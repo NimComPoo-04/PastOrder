@@ -140,7 +140,7 @@ void map_dump(map_t *m)
 	}
 }
 
-static inline Vector2 map_to_screen(map_t *m, vertex_t v)
+Vector2 map_to_screen(map_t *m, vertex_t v)
 {
 	int wid = GetScreenWidth();
 	int hei = GetScreenHeight();
@@ -371,14 +371,15 @@ void map_draw_sectors(map_t *m)
 		y_bottom[i] = hei;
 	}
 
-	enum { MaxQueue = 32 };
+	enum { MaxQueue = 1024 };
 
-	struct
+	static struct
 	{
 		int sectId;
 		Vector2 fov1;
 		Vector2 fov2;
 	} queue[MaxQueue] = {0};
+
 	int head = 0;
 	int tail = 0;
 
@@ -388,7 +389,6 @@ void map_draw_sectors(map_t *m)
 
 	tail++;
 
-	int depth = 0;
 	Vector2 pts[4];
 	Color col[4];
 
@@ -398,12 +398,13 @@ void map_draw_sectors(map_t *m)
 		map_draw_walls(m);
 
 		player_draw(m->player);
+
+		for(int i = 0; i < m->entities_count; i++)
+			entity_draw(&m->entities[i], m);
 	}
 
-	while(head != tail && depth < 5)
+	while(head != tail)
 	{
-		depth++;
-
 		int sectId = queue[head].sectId;
 		sector_t s = m->sectors[sectId];
 		Vector2 fov1 = queue[head].fov1;
