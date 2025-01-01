@@ -7,7 +7,7 @@ OBJ = $(patsubst %.c, %.o, $(SRC))
 
 ifeq ($(OS), Windows_NT)
 INC = -I ../libs/raylib-5.5_win64_mingw-w64/include
-LIB = -L ../libs/raylib-5.5_win64_mingw-w64/lib -l:libraylib.a
+LIB = -L ../libs/raylib-5.5_win64_mingw-w64/lib -l:libraylib.a -lgdi32 -lopengl32 -lwinmm
 RM = del
 else
 INC = -I ../libs/raylib-5.5_linux_amd64/include 

@@ -168,6 +168,16 @@ void entity_draw(entity_t *e, map_t *m)
 //	entity_update(e, m);
 	Vector2 v = map_to_screen(m, (vertex_t){e->pos});
 
+	Vector2 n = Vector2Normalize(Vector2Subtract(m->player->pos, e->pos));
+	Vector2 s1 = {-n.y, n.x};
+	Vector2 s2 = {n.y, -n.x};
+
+	Vector2 v1 = Vector2Add(Vector2Scale(s1, e->view_size), e->pos);
+	Vector2 v2 = Vector2Add(Vector2Scale(s2, e->view_size), e->pos);
+
+	DrawLineV(map_to_screen(m, (vertex_t){v1}), map_to_screen(m, (vertex_t){v2}), SKYBLUE);
+
 	DrawCircle(v.x, v.y, 3, LIME);
 	DrawCircleLines(v.x, v.y, e->size * GetScreenHeight()/2, YELLOW);
+	DrawCircleLines(v.x, v.y, e->view_size * GetScreenHeight()/2, GREEN);
 }

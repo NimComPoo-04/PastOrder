@@ -8,6 +8,7 @@ typedef struct entity_t
 {
 	Vector2 pos;
 	float   size;
+	float   view_size;
 	float   angle;
 	float   vel;
 	float   fov;

@@ -1,7 +1,7 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -ggdb -std=c11 -O0 -DDEBUG
+CFLAGS = -Wall -Wextra -ggdb -std=c11 -O3 -DDEBUG
 
-SRC = main.c map.c draw_ext.c entity.c
+SRC = main.c map.c draw_ext.c entity.c assets.c
 
 OBJ = $(patsubst %.c, %.o, $(SRC))
 

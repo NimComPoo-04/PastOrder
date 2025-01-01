@@ -314,10 +314,14 @@ void draw_3d_view(map_t *m, Vector2 *pts, Color *col, int wid, int hei, sector_t
 	float ndty = (nty2 - nty1)/(x2 - x1);
 	float ndby = (nby2 - nby1)/(x2 - x1);
 
-	float t = 0;
-	float dt = 1./(x2 - x1);
+	Vector2 t = {0};
+	Vector2 dt = { 1./(x2 - x1), 0 };
 
-	for(float x = x1, ty = ty1, by = by1, nty = nty1, nby = nby1; x <= x2; x++, ty += dty, by += dby)
+	Image img = m->assets->data[0].image;
+
+	for(float x = x1, ty = ty1, by = by1, nty = nty1, nby = nby1;
+			x <= x2;
+			x++, ty += dty, by += dby)
 	{
 		float tmp_ty = clamp(ty, y_top[(int)x], y_bottom[(int)x]);
 		float tmp_by = clamp(by, y_top[(int)x], y_bottom[(int)x]);
@@ -344,13 +348,31 @@ void draw_3d_view(map_t *m, Vector2 *pts, Color *col, int wid, int hei, sector_t
 		}
 		else
 		{
-			DrawLine(x, tmp_ty, x, tmp_by, ColorLerp(col[0], col[1], t));
+			t.y = 0;
+			dt.y = 1./(tmp_by - tmp_ty);
+
+			for(float y = tmp_ty; y <= tmp_by; y++)
+			{
+				int iu = (int)(t.x * img.width);
+				int iv = (int)(t.y * img.height);
+
+				Color c;
+				if(iu < img.width && iv < img.height && iu >= 0 && iv >= 0)
+				{
+					c = m->assets->data[0].colors[iu + iv * img.width];
+				}
+				DrawPixel(x, y, c);
+
+				t.y += dt.y;
+			}
+
+	//		DrawLine(x, tmp_ty, x, tmp_by, ColorLerp(col[0], col[1], u));
 
 			y_top[(int)x] = ty < y_top[(int)x] ? y_top[(int)x] : ty;
 			y_bottom[(int)x] = by > y_bottom[(int)x] ? y_bottom[(int)x] : by;
 		}
 
-		t += dt;
+		t.x += dt.x;
 	}
 }
 
@@ -482,4 +504,7 @@ void map_update(map_t *m)
 {
 	if(IsKeyPressed(KEY_D))
 		m->debug_view = !m->debug_view;
+
+	for(int i = 0; i < m->entities_count; i++)
+		entity_update(&m->entities[i], m);
 }

@@ -7,6 +7,7 @@
 #include <raymath.h>
 
 #include "entity.h"
+#include "assets.h"
 
 // Vertex information
 typedef struct vertex_t
@@ -43,6 +44,7 @@ typedef struct sector_t
 typedef struct map_t
 {
 	player_t *player;
+	assets_t *assets;
 
 	entity_t *entities;
 	int entities_count;
