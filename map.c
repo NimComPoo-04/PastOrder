@@ -1,6 +1,8 @@
 #include "map.h"
 #include "draw_ext.h"
 #include "util.h"
+
+#include <rlgl.h>
 #include <stdio.h>
 
 void map_load_data(map_t *m, const char *file)
@@ -100,7 +102,26 @@ void map_load_data(map_t *m, const char *file)
 
 					m->player->sectId = current_sector;
 					m->player->pos = point;
+
+					break;
 				}
+
+			case 'E':
+				{
+					entity_t e = {0};
+					sscanf(line+1, "%f %f", &e.pos.x, &e.pos.y);
+					e.size = 0.1;
+					e.angle = 0;
+					e.vel = 1.5;
+					e.fov = PI/2;
+					e.eye = 0.1;
+					e.sectId = current_sector;
+
+					m->entities = array_append(m->entities, &m->entities_count, &e, sizeof(e));
+
+					break;
+				}
+
 		}
 	}
 
@@ -212,7 +233,7 @@ static inline float ray_line_intersection(Vector2 o, Vector2 n, Vector2 a, Vecto
 	return t;
 }
 
-static inline int clip_points(map_t *m, line_t l, Vector2 fov1, Vector2 fov2, Vector2 pts[2], Color col[2])
+static inline int clip_points(map_t *m, line_t l, Vector2 fov1, Vector2 fov2, Vector2 pts[2], Color col[2], float tex[2])
 {
 	int pts_len = 0;
 
@@ -239,12 +260,14 @@ static inline int clip_points(map_t *m, line_t l, Vector2 fov1, Vector2 fov2, Ve
 	if(ang_a >= ang_fov1 && ang_a <= ang_fov2)
 	{
 		col[pts_len] = l.col_start;
+		tex[pts_len] = 0;
 		pts[pts_len++] = a;
 	}
 
 	if(ang_b >= ang_fov1 && ang_b <= ang_fov2)
 	{
 		col[pts_len] = l.col_end;
+		tex[pts_len] = 1;
 		pts[pts_len++] = b;
 	}
 
@@ -259,6 +282,7 @@ static inline int clip_points(map_t *m, line_t l, Vector2 fov1, Vector2 fov2, Ve
 			if(v.x > 0)
 			{
 				col[pts_len] = ColorLerp(l.col_start, l.col_end, t1);
+				tex[pts_len] = t1;
 				pts[pts_len++] = v;
 			}
 		}
@@ -269,6 +293,7 @@ static inline int clip_points(map_t *m, line_t l, Vector2 fov1, Vector2 fov2, Ve
 			if(v.x > 0)
 			{
 				col[pts_len] = ColorLerp(l.col_start, l.col_end, t2);
+				tex[pts_len] = t2;
 				pts[pts_len++] = v;
 			}
 		}
@@ -277,7 +302,7 @@ static inline int clip_points(map_t *m, line_t l, Vector2 fov1, Vector2 fov2, Ve
 	return pts_len;
 }
 
-void draw_3d_view(map_t *m, Vector2 *pts, Color *col, int wid, int hei, sector_t s, sector_t ns,
+void draw_3d_view(map_t *m, Vector2 *pts, Color *col, float *tex, int wid, int hei, sector_t s, sector_t ns,
 		int isportal, float *y_top, float *y_bottom)
 {
 	//float arc = tan(m->player->fov/2);
@@ -293,6 +318,7 @@ void draw_3d_view(map_t *m, Vector2 *pts, Color *col, int wid, int hei, sector_t
 	{
 		swap(x1, x2, float);
 		swap(z1, z2, float);
+		swap(tex[0], tex[1], float);
 		swap(col[0], col[1], Color);
 	}
 
@@ -314,14 +340,17 @@ void draw_3d_view(map_t *m, Vector2 *pts, Color *col, int wid, int hei, sector_t
 	float ndty = (nty2 - nty1)/(x2 - x1);
 	float ndby = (nby2 - nby1)/(x2 - x1);
 
-	Vector2 t = {0};
-	Vector2 dt = { 1./(x2 - x1), 0 };
+	float w1 = 1./z1;
+	float w2 = 1./z2;
 
-	Image img = m->assets->data[0].image;
+	float t = 0;
+	float dt = 1/(x2 - x1);
 
-	for(float x = x1, ty = ty1, by = by1, nty = nty1, nby = nby1;
+	float dz = 1/(z2 - z1);
+
+	for(float x = x1, ty = ty1, by = by1, nty = nty1, nby = nby1, z = z1;
 			x <= x2;
-			x++, ty += dty, by += dby)
+			x++, ty += dty, by += dby, z += dz)
 	{
 		float tmp_ty = clamp(ty, y_top[(int)x], y_bottom[(int)x]);
 		float tmp_by = clamp(by, y_top[(int)x], y_bottom[(int)x]);
@@ -348,31 +377,34 @@ void draw_3d_view(map_t *m, Vector2 *pts, Color *col, int wid, int hei, sector_t
 		}
 		else
 		{
-			t.y = 0;
-			dt.y = 1./(tmp_by - tmp_ty);
+			float up = (tmp_ty - ty)/(by - ty);
+			float down = (tmp_by - ty)/(by - ty);
 
-			for(float y = tmp_ty; y <= tmp_by; y++)
-			{
-				int iu = (int)(t.x * img.width);
-				int iv = (int)(t.y * img.height);
+			rlSetTexture(m->assets->data[0].image.id);
+			rlBegin(RL_QUADS);
 
-				Color c;
-				if(iu < img.width && iv < img.height && iu >= 0 && iv >= 0)
-				{
-					c = m->assets->data[0].colors[iu + iv * img.width];
-				}
-				DrawPixel(x, y, c);
+				Color c = ColorLerp(col[0], col[1], t);
 
-				t.y += dt.y;
-			}
+				rlColor4ub(c.r, c.g, c.b, 255);
+				rlNormal3f(0, 0, 1);
 
-	//		DrawLine(x, tmp_ty, x, tmp_by, ColorLerp(col[0], col[1], u));
+				float w = (1 - t) * w1 + t * w2;
+				float u = (1 - t) * tex[0] * w1 + t * tex[1] * w2;
+				u = u / w;
+
+				rlTexCoord2f(u, up); rlVertex2f(x  , tmp_ty);
+				rlTexCoord2f(u, down); rlVertex2f(x  , tmp_by);
+				rlTexCoord2f(u, down); rlVertex2f(x+1, tmp_by);
+				rlTexCoord2f(u, up); rlVertex2f(x+1, tmp_ty);
+
+			rlEnd();
+			rlSetTexture(0);
 
 			y_top[(int)x] = ty < y_top[(int)x] ? y_top[(int)x] : ty;
 			y_bottom[(int)x] = by > y_bottom[(int)x] ? y_bottom[(int)x] : by;
 		}
 
-		t.x += dt.x;
+		t += dt;
 	}
 }
 
@@ -381,7 +413,7 @@ void map_draw_sectors(map_t *m)
 	int wid = GetScreenWidth();
 	int hei = GetScreenHeight();
 
-	char *visited_sectors = calloc(sizeof(char), m->sectors_count);
+	char *visited_sectors = calloc(m->sectors_count, sizeof(char));
 
 	// Setting up the y thing
 	float *y_top = malloc(sizeof(float) * GetScreenWidth());
@@ -413,6 +445,7 @@ void map_draw_sectors(map_t *m)
 
 	Vector2 pts[4];
 	Color col[4];
+	float tex[4];
 
 	if(m->debug_view)
 	{
@@ -438,7 +471,7 @@ void map_draw_sectors(map_t *m)
 		{
 			line_t l = s.walls[i];
 
-			int pts_len = clip_points(m, l, fov1, fov2, pts, col);
+			int pts_len = clip_points(m, l, fov1, fov2, pts, col, tex);
 
 			if(pts_len != 2)
 				continue;
@@ -456,7 +489,7 @@ void map_draw_sectors(map_t *m)
 				DrawLineV(v, kb, GREEN);
 			}
 			else
-				draw_3d_view(m, pts, col, wid, hei, s, s, 0, y_top, y_bottom);
+				draw_3d_view(m, pts, col, tex, wid, hei, s, s, 0, y_top, y_bottom);
 		}
 
 		visited_sectors[sectId] = 1;
@@ -465,7 +498,7 @@ void map_draw_sectors(map_t *m)
 		{
 			line_t l = s.portals[i];
 
-			int pts_len = clip_points(m, l, fov1, fov2, pts, col);
+			int pts_len = clip_points(m, l, fov1, fov2, pts, col, tex);
 
 			if(pts_len != 2) continue;
 			if(visited_sectors[s.neighbours[i]] != 0) continue;
@@ -480,7 +513,7 @@ void map_draw_sectors(map_t *m)
 				DrawLineGradientV(ka, col[0], kb, col[1]);
 			}
 			else
-				draw_3d_view(m, pts, col, wid, hei, s, ns, 1, y_top, y_bottom);
+				draw_3d_view(m, pts, col, tex, wid, hei, s, ns, 1, y_top, y_bottom);
 
 			queue[tail].sectId = s.neighbours[i];
 			queue[tail].fov1 = pts[0];

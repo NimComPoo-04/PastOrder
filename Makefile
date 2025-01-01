@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -ggdb -std=c11 -O3 -DDEBUG
+CFLAGS = -Wall -Wextra -ggdb -std=c11 -O0 -DDEBUG
 
 SRC = main.c map.c draw_ext.c entity.c assets.c
 

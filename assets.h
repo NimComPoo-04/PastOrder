@@ -10,8 +10,7 @@ typedef struct
 	struct asset_data_t
 	{
 		enum { ASSET_IMAGE } type;
-		Image image;
-		Color *colors;
+		Texture2D image;
 	} *data;
 } assets_t;
 

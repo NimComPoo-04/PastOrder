@@ -1,14 +1,19 @@
 #include "assets.h"
 #include "util.h"
+#include <assert.h>
 
 int assets_load_image(assets_t *as, const char *fil)
 {
-	Image img = LoadImage(fil);
+	Texture2D img = LoadTexture(fil);
+
+	if(!IsTextureValid(img))
+	{
+		return -1;
+	}
 
 	struct asset_data_t dat = {
 		.type = ASSET_IMAGE,
 		.image = img,
-		.colors = LoadImageColors(img)
 	};
 
 	as->data = array_append(as->data, &as->assets_count, &dat, sizeof(struct asset_data_t));
@@ -22,8 +27,7 @@ void assets_unload(assets_t *as)
 		switch(as->data[i].type)
 		{
 			case ASSET_IMAGE:
-				UnloadImage(as->data[i].image);
-				UnloadImageColors(as->data[i].colors);
+				UnloadTexture(as->data[i].image);
 				break;
 		}
 	}
