@@ -34,6 +34,7 @@ int main(int argc, char **argv)
 
 	assets_t as = {0};
 	assets_load_image(&as, "assets/beluga.png");
+	assets_load_image(&as, "assets/robot.png");
 	m.assets = &as;
 
 	while(!WindowShouldClose())

@@ -159,7 +159,6 @@ void entity_update(entity_t *p, map_t *m)
 	newupd.y = 0;
 
 	p->pos = newpos;
-
 }
 
 Vector2 map_to_screen(map_t *m, vertex_t v);

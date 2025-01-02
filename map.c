@@ -233,12 +233,9 @@ static inline float ray_line_intersection(Vector2 o, Vector2 n, Vector2 a, Vecto
 	return t;
 }
 
-static inline int clip_points(map_t *m, line_t l, Vector2 fov1, Vector2 fov2, Vector2 pts[2], Color col[2], float tex[2])
+static inline int clip_points(map_t *m, Vector2 a, Vector2 b, Vector2 fov1, Vector2 fov2, Vector2 pts[2], float tex[2])
 {
 	int pts_len = 0;
-
-	Vector2 a = map_to_relpalyer(m, m->vertices[l.start]);
-	Vector2 b = map_to_relpalyer(m, m->vertices[l.end]);
 
 	// Clipping code
 
@@ -259,14 +256,12 @@ static inline int clip_points(map_t *m, line_t l, Vector2 fov1, Vector2 fov2, Ve
 
 	if(ang_a >= ang_fov1 && ang_a <= ang_fov2)
 	{
-		col[pts_len] = l.col_start;
 		tex[pts_len] = 0;
 		pts[pts_len++] = a;
 	}
 
 	if(ang_b >= ang_fov1 && ang_b <= ang_fov2)
 	{
-		col[pts_len] = l.col_end;
 		tex[pts_len] = 1;
 		pts[pts_len++] = b;
 	}
@@ -281,7 +276,6 @@ static inline int clip_points(map_t *m, line_t l, Vector2 fov1, Vector2 fov2, Ve
 			Vector2 v = Vector2Lerp(a, b, t1);
 			if(v.x > 0)
 			{
-				col[pts_len] = ColorLerp(l.col_start, l.col_end, t1);
 				tex[pts_len] = t1;
 				pts[pts_len++] = v;
 			}
@@ -292,7 +286,6 @@ static inline int clip_points(map_t *m, line_t l, Vector2 fov1, Vector2 fov2, Ve
 			Vector2 v = Vector2Lerp(a, b, t2);
 			if(v.x > 0)
 			{
-				col[pts_len] = ColorLerp(l.col_start, l.col_end, t2);
 				tex[pts_len] = t2;
 				pts[pts_len++] = v;
 			}
@@ -383,14 +376,15 @@ void draw_3d_view(map_t *m, Vector2 *pts, Color *col, float *tex, int wid, int h
 			rlSetTexture(m->assets->data[0].image.id);
 			rlBegin(RL_QUADS);
 
-				Color c = ColorLerp(col[0], col[1], t);
-
-				rlColor4ub(c.r, c.g, c.b, 255);
-				rlNormal3f(0, 0, 1);
-
 				float w = (1 - t) * w1 + t * w2;
 				float u = (1 - t) * tex[0] * w1 + t * tex[1] * w2;
 				u = u / w;
+
+				Color c = { 255,255, 255 };
+
+
+				rlColor4ub(c.r, c.g, c.b, 255);
+				rlNormal3f(0, 0, 1);
 
 				rlTexCoord2f(u, up); rlVertex2f(x  , tmp_ty);
 				rlTexCoord2f(u, down); rlVertex2f(x  , tmp_by);
@@ -403,6 +397,76 @@ void draw_3d_view(map_t *m, Vector2 *pts, Color *col, float *tex, int wid, int h
 			y_top[(int)x] = ty < y_top[(int)x] ? y_top[(int)x] : ty;
 			y_bottom[(int)x] = by > y_bottom[(int)x] ? y_bottom[(int)x] : by;
 		}
+
+		t += dt;
+	}
+}
+
+void draw_3d_entity(map_t *m, int entity, float *xbounds, float **ybounds, float *depth, float *tex, float wid, float hei)
+{
+	float znear = 1;
+
+	(void)wid;
+	(void)hei;
+
+	float z1 = depth[0], z2 = depth[1];
+	float x1 = xbounds[0], x2 = xbounds[1];
+
+	if(x1 > x2)
+	{
+		swap(x1, x2, float);
+		swap(z1, z2, float);
+		swap(tex[0], tex[1], float);
+	//	swap(col[0], col[1], Color);
+	}
+
+	entity_t e = m->entities[entity];
+	sector_t s = m->sectors[m->entities[entity].sectId];
+
+	float height = e.eye;
+	float elevation = s.elevation;
+
+	float ty1 = hei - ((height - elevation - m->player->eye) * znear / z1 + 1)/2 * hei;
+	float ty2 = hei - ((height - elevation - m->player->eye) * znear / z2 + 1)/2 * hei;
+	float by1 = hei - ((elevation - m->player->eye) * znear / z1 + 1)/2 * hei;
+	float by2 = hei - ((elevation - m->player->eye) * znear / z2 + 1)/2 * hei;
+
+	float dty = (ty2 - ty1)/(x2 - x1);
+	float dby = (by2 - by1)/(x2 - x1);
+
+	float w1 = 1./z1;
+	float w2 = 1./z2;
+
+	float t = 0;
+	float dt = 1/(x2 - x1);
+
+	for(float i = 0, x = x1, ty = ty1, by = by1;
+			x <= x2;
+			x++, i++, ty += dty, by += dby)
+	{
+		float tmp_ty = ty;//clamp(ty, ybounds[0][(int)x], ybounds[1][(int)x]);
+		float tmp_by = by;//clamp(by, ybounds[0][(int)x], ybounds[1][(int)x]);
+
+		float up = (tmp_ty - ty)/(by - ty);
+		float down = (tmp_by - ty)/(by - ty);
+
+		float w = (1 - t) * w1 + t * w2;
+		float u = (1 - t) * tex[0] * w1 + t * tex[1] * w2;
+		u = u / w;
+
+		rlSetTexture(m->assets->data[1].image.id);
+		rlBegin(RL_QUADS);
+
+			rlColor4ub(255, 255, 255, 255);
+			rlNormal3f(0, 0, 1);
+
+			rlTexCoord2f(u, up); rlVertex2f(x  , tmp_ty);
+			rlTexCoord2f(u, down); rlVertex2f(x  , tmp_by);
+			rlTexCoord2f(u, down); rlVertex2f(x+1, tmp_by);
+			rlTexCoord2f(u, up); rlVertex2f(x+1, tmp_ty);
+
+		rlEnd();
+		rlSetTexture(0);
 
 		t += dt;
 	}
@@ -424,6 +488,17 @@ void map_draw_sectors(map_t *m)
 		y_top[i] = 0;
 		y_bottom[i] = hei;
 	}
+
+	enum { MaxStack = 1024 };
+	static struct
+	{
+		int entity;
+		float tex[2];
+		float depths[2];
+		float xbounds[2];
+		float *ybounds[2];
+	} stack[MaxStack] = {0};
+	int top = 0;
 
 	enum { MaxQueue = 1024 };
 
@@ -471,7 +546,13 @@ void map_draw_sectors(map_t *m)
 		{
 			line_t l = s.walls[i];
 
-			int pts_len = clip_points(m, l, fov1, fov2, pts, col, tex);
+			Vector2 a = map_to_relpalyer(m, m->vertices[l.start]);
+			Vector2 b = map_to_relpalyer(m, m->vertices[l.end]);
+
+			col[0] = l.col_start;
+			col[1] = l.col_end;
+
+			int pts_len = clip_points(m, a, b, fov1, fov2, pts, tex);
 
 			if(pts_len != 2)
 				continue;
@@ -498,7 +579,13 @@ void map_draw_sectors(map_t *m)
 		{
 			line_t l = s.portals[i];
 
-			int pts_len = clip_points(m, l, fov1, fov2, pts, col, tex);
+			Vector2 a = map_to_relpalyer(m, m->vertices[l.start]);
+			Vector2 b = map_to_relpalyer(m, m->vertices[l.end]);
+
+			col[0] = l.col_start;
+			col[1] = l.col_end;
+
+			int pts_len = clip_points(m, a, b, fov1, fov2, pts, tex);
 
 			if(pts_len != 2) continue;
 			if(visited_sectors[s.neighbours[i]] != 0) continue;
@@ -526,6 +613,66 @@ void map_draw_sectors(map_t *m)
 
 			visited_sectors[s.neighbours[i]] = 1;
 		}
+
+		if(!m->debug_view)
+		{
+			for(int i = 0; i < m->entities_count; i++)
+			{
+				if(m->entities[i].sectId == sectId)
+				{
+					stack[top].entity = i;
+
+					entity_t e = m->entities[i];
+
+					Vector2 v = map_to_relpalyer(m, (vertex_t){e.pos});
+					Vector2 np = Vector2Normalize((Vector2){-v.y, v.x});
+
+					Vector2 a = Vector2Add(v, Vector2Scale(np, e.size));
+					Vector2 b = Vector2Subtract(v, Vector2Scale(np, e.size));
+
+					int pts_len = clip_points(m, a, b, fov1, fov2, pts, stack[top].tex);
+
+					if(pts_len != 2)
+						continue;
+
+					stack[top].depths[0] = pts[0].x;
+					stack[top].depths[1] = pts[1].x;
+
+					stack[top].xbounds[0] = clamp((pts[0].y / stack[top].depths[0] + 1)/2, 0.0015, 1) * wid;
+					stack[top].xbounds[1] = clamp((pts[1].y / stack[top].depths[1] + 1)/2, 0.0015, 1) * wid;
+
+					int len = (int)(stack[top].xbounds[1] - stack[top].xbounds[0]);
+
+					stack[top].ybounds[0] = malloc(sizeof(float) * wid);
+					stack[top].ybounds[1] = malloc(sizeof(float) * wid);
+
+					for(int i = 0; i < len; i++)
+						stack[top].ybounds[0][i] = y_top[(int)stack[top].xbounds[0] + i];
+
+					for(int i = 0; i < len; i++)
+						stack[top].ybounds[1][i] = y_bottom[(int)stack[top].xbounds[0] + i];
+
+					/*
+					memcpy(stack[top].ybounds[0], y_top + (int)stack[top].xbounds[0], len);
+					memcpy(stack[top].ybounds[1], y_bottom + (int)stack[top].xbounds[0], len);
+					*/
+
+					top++;
+				}
+			}
+		}
+	}
+
+	while(top)
+	{
+		draw_3d_entity(m, stack[top].entity,
+				stack[top].xbounds, stack[top].ybounds,
+				stack[top].depths, stack[top].tex, wid, hei);
+
+		free(stack[top].ybounds[0]);
+		free(stack[top].ybounds[1]);
+
+		top--;
 	}
 
 	free(y_top);
