@@ -30,10 +30,10 @@ $(foreach T, $(SRC), $(eval $(call depend $(T))))
 
 ifeq ($(OS), Windows_NT)
 getdeps:
-	mkdir libs ||\
-	cd libs ||\
-	curl -L -O https://github.com/raysan5/raylib/releases/download/5.5/raylib-5.5_win64_mingw-w64.zip ||\
-	tar xf raylib-5.5_win64_mingw-w64.zip ||\
+	mkdir libs &\
+	cd libs &\
+	curl -L -O https://github.com/raysan5/raylib/releases/download/5.5/raylib-5.5_win64_mingw-w64.zip &\
+	tar xf raylib-5.5_win64_mingw-w64.zip &\
 	del /S /Q raylib-5.5_win64_mingw-w64.zip
 else
 getdeps:
